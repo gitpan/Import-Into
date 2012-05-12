@@ -38,6 +38,14 @@ SYNOPSIS
     package (and in fact on any object as well, although it's rarer that
     you'd want to do that).
 
+    Finally, we also provide an "unimport::out_of" to allow the exporting of
+    the effect of "no":
+
+      # unimport::out_of was added in 1.1.0 (1.001000)
+      sub unimport {
+        Moose->unimport::out_of(scalar caller); # no MyThing == no Moose
+      }
+
     If how and why this all works is of interest to you, please read on to
     the description immediately below.
 
