@@ -9,57 +9,95 @@ SYNOPSIS
       use Thing1 ();
       use Thing2 ();
 
+      # simple
+      sub import {
+        Thing1->import::into(scalar caller);
+      }
+
+      # multiple
       sub import {
         my $target = caller;
         Thing1->import::into($target);
         Thing2->import::into($target, qw(import arguments));
       }
 
-    Note: you don't need to do anything more clever than this provided you
-    document that people wanting to re-export your module should also be
-    using Import::Into. In fact, for a single module you can simply do:
-
+      # by level
       sub import {
-        ...
-        Thing1->import::into(scalar caller);
+        Thing1->import::into(1);
       }
 
-    Notably, this works:
-
+      # with exporter
       use base qw(Exporter);
-
       sub import {
         shift->export_to_level(1);
-        Thing1->import::into(scalar caller);
+        Thing1->import::into(1);
       }
 
-    Note 2: You do not need to do anything to Thing1 to be able to call
+      # no My::MultiExporter == no Thing1
+      sub unimport {
+        Thing1->unimport::out_of(scalar caller);
+      }
+
+    People wanting to re-export your module should also be using
+    Import::Into. Any exporter or pragma will work seamlessly.
+
+    Note: You do not need to make any changes to Thing1 to be able to call
     "import::into" on it. This is a global method, and is callable on any
     package (and in fact on any object as well, although it's rarer that
     you'd want to do that).
-
-    Finally, we also provide an "unimport::out_of" to allow the exporting of
-    the effect of "no":
-
-      # unimport::out_of was added in 1.1.0 (1.001000)
-      sub unimport {
-        Moose->unimport::out_of(scalar caller); # no MyThing == no Moose
-      }
-
-    If how and why this all works is of interest to you, please read on to
-    the description immediately below.
 
 DESCRIPTION
     Writing exporters is a pain. Some use Exporter, some use Sub::Exporter,
     some use Moose::Exporter, some use Exporter::Declare ... and some things
     are pragmas.
 
-    If you want to re-export other things, you have to know which is which.
-    Exporter subclasses provide export_to_level, but if they overrode their
-    import method all bets are off. Sub::Exporter provides an into parameter
-    but figuring out something used it isn't trivial. Pragmas need to have
-    their "import" method called directly since they affect the current unit
-    of compilation.
+    Exporting on someone else's behalf is harder. The exporters don't
+    provide a consistent API for this, and pragmas need to have their import
+    method called directly, since they effect the current unit of
+    compilation.
+
+    "Import::Into" provides global methods to make this painless.
+
+METHODS
+  $package->import::into( $target, @arguments );
+    A global method, callable on any package. Imports the given package into
+    $target. @arguments are passed along to the package's import method.
+
+    $target can be an package name to export to, an integer for the caller
+    level to export to, or a hashref with the following options:
+
+    package
+        The target package to export to.
+
+    filename
+        The apparent filename to export to. Some exporting modules, such as
+        autodie or strictures, care about the filename they are being
+        imported to.
+
+    line
+        The apparent line number to export to. To be combined with the
+        "filename" option.
+
+    level
+        The caller level to export to. This will automatically populate the
+        "package", "filename", and "line" options, making it the easiest
+        most constent option.
+
+    version
+        A version number to check for the module. The equivalent of
+        specifying the version number on a "use" line.
+
+  $package->unimport::out_of( $target, @arguments );
+    Equivalent to "import::into", but dispatches to $package's "unimport"
+    method instead of "import".
+
+WHY USE THIS MODULE
+    The APIs for exporting modules aren't consistent. Exporter subclasses
+    provide export_to_level, but if they overrode their import method all
+    bets are off. Sub::Exporter provides an into parameter but figuring out
+    something used it isn't trivial. Pragmas need to have their "import"
+    method called directly since they affect the current unit of
+    compilation.
 
     It's ... annoying.
 
@@ -94,7 +132,7 @@ DESCRIPTION
     these approaches alone on something like Moose or Moo that's both an
     exporter and a pragma.
 
-    So, the complete solution is:
+    So, a solution for that is:
 
       my $sub = eval "package $target; sub { shift->import(\@_) }";
       $sub->($thing, @import_args);
@@ -103,6 +141,23 @@ DESCRIPTION
     take effect, and from the right package for caller checking to work -
     and so behaves correctly for all types of exporter, for pragmas, and for
     hybrids.
+
+    Additionally, some import routines check the filename they are being
+    imported to. This can be dealt with by generating a #line directive in
+    the eval, which will change what "caller" reports for the filename when
+    called in the importer. The filename and line number to use in the
+    directive then need to be fetched using "caller":
+
+      my ($target, $file, $line) = caller(1);
+      my $sub = eval qq{
+        package $target;
+      #line $line "$file"
+        sub { shift->import(\@_) }
+      };
+      $sub->($thing, @import_args);
+
+    And you need to switch between these implementations depending on if you
+    are targetting a specific package, or something in your call stack.
 
     Remembering all this, however, is excessively irritating. So I wrote a
     module so I didn't have to anymore. Loading Import::Into creates a
@@ -152,11 +207,16 @@ DESCRIPTION
 
     And that's it.
 
+ACKNOWLEDGEMENTS
+    Thanks to Getty for asking "how can I get "use strict; use warnings;"
+    turned on for all consumers of my code?" and then "why is this not a
+    module?!".
+
 AUTHOR
     mst - Matt S. Trout (cpan:MSTROUT) <mst@shadowcat.co.uk>
 
 CONTRIBUTORS
-    None yet - maybe this software is perfect! (ahahahahahahahahaha)
+    haarg - Graham Knop (cpan:HAARG) <haarg@haarg.org>
 
 COPYRIGHT
     Copyright (c) 2012 the Import::Into "AUTHOR" and "CONTRIBUTORS" as

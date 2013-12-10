@@ -3,34 +3,49 @@ package Import::Into;
 use strict;
 use warnings FATAL => 'all';
 
-our $VERSION = '1.001001'; # 1.1.1
+our $VERSION = '1.002000'; # 1.2.0
 
-my %importers;
-
-sub _importer {
+sub _prelude {
   my $target = shift;
-  \($importers{$target} ||= eval qq{
-    package $target;
-    sub { my \$m = splice \@_, 1, 1; shift->\$m(\@_) };
-  } or die "Couldn't build importer for $target: $@")
+  my ($package, $file, $line, $level)
+    = ref $target         ? @{$target}{qw(package filename line)}
+    : $target =~ /[^0-9]/ ? ($target)
+                          : (undef, undef, undef, $target);
+  if (defined $level) {
+    my ($p, $fn, $ln) = caller($level + 2);
+    $package ||= $p;
+    $file    ||= $fn;
+    $line    ||= $ln;
+  }
+  qq{package $package;\n}
+    . ($file ? "#line $line \"$file\"\n" : '')
 }
-  
+
+sub _make_action {
+  my ($action, $target) = @_;
+  my $version = ref $target && $target->{version};
+  my $ver_check = $version ? '$_[0]->VERSION($version);' : '';
+  eval _prelude($target).qq{sub { $ver_check shift->$action(\@_) }}
+    or die "Failed to build action sub to ${action} for ${target}: $@";
+}
 
 sub import::into {
   my ($class, $target, @args) = @_;
-  $class->${_importer($target)}(import => @args);
+  _make_action(import => $target)->($class, @args);
 }
 
 sub unimport::out_of {
   my ($class, $target, @args) = @_;
-  $class->${_importer($target)}(unimport => @args);
+  _make_action(unimport => $target)->($class, @args);
 }
 
 1;
- 
+
+__END__
+
 =head1 NAME
 
-Import::Into - import packages into other packages 
+Import::Into - import packages into other packages
 
 =head1 SYNOPSIS
 
@@ -41,45 +56,42 @@ Import::Into - import packages into other packages
   use Thing1 ();
   use Thing2 ();
 
+  # simple
+  sub import {
+    Thing1->import::into(scalar caller);
+  }
+
+  # multiple
   sub import {
     my $target = caller;
     Thing1->import::into($target);
     Thing2->import::into($target, qw(import arguments));
   }
 
-Note: you don't need to do anything more clever than this provided you
-document that people wanting to re-export your module should also be using
-L<Import::Into>. In fact, for a single module you can simply do:
-
+  # by level
   sub import {
-    ...
-    Thing1->import::into(scalar caller);
+    Thing1->import::into(1);
   }
 
-Notably, this works:
-
+  # with exporter
   use base qw(Exporter);
-
   sub import {
     shift->export_to_level(1);
-    Thing1->import::into(scalar caller);
+    Thing1->import::into(1);
   }
 
-Note 2: You do B<not> need to do anything to Thing1 to be able to call
+  # no My::MultiExporter == no Thing1
+  sub unimport {
+    Thing1->unimport::out_of(scalar caller);
+  }
+
+People wanting to re-export your module should also be using L<Import::Into>.
+Any exporter or pragma will work seamlessly.
+
+Note: You do B<not> need to make any changes to Thing1 to be able to call
 C<import::into> on it. This is a global method, and is callable on any
 package (and in fact on any object as well, although it's rarer that you'd
 want to do that).
-
-Finally, we also provide an C<unimport::out_of> to allow the exporting of the
-effect of C<no>:
-
-  # unimport::out_of was added in 1.1.0 (1.001000)
-  sub unimport {
-    Moose->unimport::out_of(scalar caller); # no MyThing == no Moose
-  }
-
-If how and why this all works is of interest to you, please read on to the
-description immediately below.
 
 =head1 DESCRIPTION
 
@@ -87,12 +99,64 @@ Writing exporters is a pain. Some use L<Exporter>, some use L<Sub::Exporter>,
 some use L<Moose::Exporter>, some use L<Exporter::Declare> ... and some things
 are pragmas.
 
-If you want to re-export other things, you have to know which is which.
-L<Exporter> subclasses provide export_to_level, but if they overrode their
-import method all bets are off. L<Sub::Exporter> provides an into parameter
-but figuring out something used it isn't trivial. Pragmas need to have
-their C<import> method called directly since they affect the current unit of
-compilation.
+Exporting on someone else's behalf is harder.  The exporters don't provide a
+consistent API for this, and pragmas need to have their import method called
+directly, since they effect the current unit of compilation.
+
+C<Import::Into> provides global methods to make this painless.
+
+=head1 METHODS
+
+=head2 $package->import::into( $target, @arguments );
+
+A global method, callable on any package.  Imports the given package into
+C<$target>.  C<@arguments> are passed along to the package's import method.
+
+C<$target> can be an package name to export to, an integer for the
+caller level to export to, or a hashref with the following options:
+
+=over 4
+
+=item package
+
+The target package to export to.
+
+=item filename
+
+The apparent filename to export to.  Some exporting modules, such as
+L<autodie> or L<strictures>, care about the filename they are being imported
+to.
+
+=item line
+
+The apparent line number to export to.  To be combined with the C<filename>
+option.
+
+=item level
+
+The caller level to export to.  This will automatically populate the
+C<package>, C<filename>, and C<line> options, making it the easiest most
+constent option.
+
+=item version
+
+A version number to check for the module.  The equivalent of specifying the
+version number on a C<use> line.
+
+=back
+
+=head2 $package->unimport::out_of( $target, @arguments );
+
+Equivalent to C<import::into>, but dispatches to C<$package>'s C<unimport>
+method instead of C<import>.
+
+=head1 WHY USE THIS MODULE
+
+The APIs for exporting modules aren't consistent.  L<Exporter> subclasses
+provide export_to_level, but if they overrode their import method all bets
+are off.  L<Sub::Exporter> provides an into parameter but figuring out
+something used it isn't trivial. Pragmas need to have their C<import> method
+called directly since they affect the current unit of compilation.
 
 It's ... annoying.
 
@@ -126,7 +190,7 @@ know if something's a pragma, and second that you can't use either of
 these approaches alone on something like L<Moose> or L<Moo> that's both
 an exporter and a pragma.
 
-So, the complete solution is:
+So, a solution for that is:
 
   my $sub = eval "package $target; sub { shift->import(\@_) }";
   $sub->($thing, @import_args);
@@ -134,6 +198,23 @@ So, the complete solution is:
 which means that import is called from the right place for pragmas to take
 effect, and from the right package for caller checking to work - and so
 behaves correctly for all types of exporter, for pragmas, and for hybrids.
+
+Additionally, some import routines check the filename they are being imported
+to.  This can be dealt with by generating a L<#line directive|perlsyn/Plain
+Old Comments (Not!)> in the eval, which will change what C<caller> reports for
+the filename when called in the importer. The filename and line number to use
+in the directive then need to be fetched using C<caller>:
+
+  my ($target, $file, $line) = caller(1);
+  my $sub = eval qq{
+    package $target;
+  #line $line "$file"
+    sub { shift->import(\@_) }
+  };
+  $sub->($thing, @import_args);
+
+And you need to switch between these implementations depending on if you are
+targetting a specific package, or something in your call stack.
 
 Remembering all this, however, is excessively irritating. So I wrote a module
 so I didn't have to anymore. Loading L<Import::Into> creates a global method
@@ -181,13 +262,19 @@ you're receiving this from a parameter, I recommend using L<Module::Runtime>:
 
 And that's it.
 
+=head1 ACKNOWLEDGEMENTS
+
+Thanks to Getty for asking "how can I get C<< use strict; use warnings; >>
+turned on for all consumers of my code?" and then "why is this not a
+module?!".
+
 =head1 AUTHOR
 
 mst - Matt S. Trout (cpan:MSTROUT) <mst@shadowcat.co.uk>
 
 =head1 CONTRIBUTORS
 
-None yet - maybe this software is perfect! (ahahahahahahahahaha)
+haarg - Graham Knop (cpan:HAARG) <haarg@haarg.org>
 
 =head1 COPYRIGHT
 
@@ -198,3 +285,5 @@ as listed above.
 
 This library is free software and may be distributed under the same terms
 as perl itself.
+
+=cut
