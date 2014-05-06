@@ -8,6 +8,7 @@ WriteMakefile(
   VERSION_FROM => 'lib/Import/Into.pm',
   PREREQ_PM => { },
   LICENSE => 'perl',
+  MIN_PERL_VERSION => '5.006',
 
   META_MERGE => {
     'meta-spec' => { version => 2 },
@@ -24,6 +25,22 @@ WriteMakefile(
           web => 'https://rt.cpan.org/Public/Dist/Display.html?Name=Import-Into',
       },
     },
-
+    prereqs => {
+      runtime => {
+        requires => {
+          'strict' => '0',
+          'warnings' => '0',
+        },
+      },
+      test => {
+        requires => {
+          'Exporter' => '0',
+          'base' => '0',
+          'Test::More' => '0',
+        },
+      },
+    },
   },
+
+  realclean => { FILES => [ 'Distar/', 'MANIFEST*' ] },
 );
