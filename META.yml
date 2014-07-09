@@ -1,5 +1,5 @@
 ---
-abstract: 'import packages into other packages'
+abstract: 'Import packages into other packages'
 author:
   - 'mst - Matt S. Trout (cpan:MSTROUT) <mst@shadowcat.co.uk>'
 build_requires:
@@ -10,7 +10,7 @@ build_requires:
 configure_requires:
   ExtUtils::MakeMaker: '0'
 dynamic_config: 0
-generated_by: 'ExtUtils::MakeMaker version 6.98, CPAN::Meta::Converter version 2.141170'
+generated_by: 'ExtUtils::MakeMaker version 6.98, CPAN::Meta::Converter version 2.141520'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -21,10 +21,11 @@ no_index:
     - t
     - inc
 requires:
+  Module::Runtime: '0'
   perl: '5.006'
   strict: '0'
   warnings: '0'
 resources:
   bugtracker: https://rt.cpan.org/Public/Dist/Display.html?Name=Import-Into
   repository: git://git.shadowcat.co.uk/p5sagit/Import-Into.git
-version: '1.002002'
+version: '1.002003'

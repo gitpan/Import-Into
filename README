@@ -1,13 +1,10 @@
 NAME
-    Import::Into - import packages into other packages
+    Import::Into - Import packages into other packages
 
 SYNOPSIS
       package My::MultiExporter;
 
       use Import::Into;
-
-      use Thing1 ();
-      use Thing2 ();
 
       # simple
       sub import {
@@ -60,8 +57,9 @@ DESCRIPTION
 
 METHODS
   $package->import::into( $target, @arguments );
-    A global method, callable on any package. Imports the given package into
-    $target. @arguments are passed along to the package's import method.
+    A global method, callable on any package. Loads and imports the given
+    package into $target. @arguments are passed along to the package's
+    import method.
 
     $target can be an package name to export to, an integer for the caller
     level to export to, or a hashref with the following options:
@@ -134,7 +132,8 @@ WHY USE THIS MODULE
 
     So, a solution for that is:
 
-      my $sub = eval "package $target; sub { shift->import(\@_) }";
+      use Module::Runtime;
+      my $sub = eval "package $target; sub { use_module(shift)->import(\@_) }";
       $sub->($thing, @import_args);
 
     which means that import is called from the right place for pragmas to
@@ -152,7 +151,7 @@ WHY USE THIS MODULE
       my $sub = eval qq{
         package $target;
       #line $line "$file"
-        sub { shift->import(\@_) }
+        sub { use_module(shift)->import(\@_) }
       };
       $sub->($thing, @import_args);
 
@@ -196,15 +195,6 @@ WHY USE THIS MODULE
     <http://shadow.cat/blog/matt-s-trout/madness-with-methods> which covers
     coderef abuse and the "${\...}" syntax.
 
-    Final note: You do still need to ensure that you already loaded $thing -
-    if you're receiving this from a parameter, I recommend using
-    Module::Runtime:
-
-      use Import::Into;
-      use Module::Runtime qw(use_module);
-
-      use_module($thing)->import::into($target, @import_args);
-
     And that's it.
 
 SEE ALSO
@@ -221,6 +211,8 @@ AUTHOR
 
 CONTRIBUTORS
     haarg - Graham Knop (cpan:HAARG) <haarg@haarg.org>
+
+    Mithaldu - Christian Walde (cpan:MITHALDU) <walde.christian@gmail.com>
 
 COPYRIGHT
     Copyright (c) 2012 the Import::Into "AUTHOR" and "CONTRIBUTORS" as
